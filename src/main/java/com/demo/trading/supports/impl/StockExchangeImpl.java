@@ -91,7 +91,7 @@ public class StockExchangeImpl implements StockExchange {
     public void removeOrder(Order order) {
         var stockSymbol = order.getStockSymbol();
         var stockLock = getLockForStock(stockSymbol);
-        while (!stockLock.tryLock(2, TimeUnit.SECONDS)) {
+        while (!stockLock.tryLock(1, TimeUnit.SECONDS)) {
             log.info("Waiting for stockLock on {} for REM op.", stockSymbol);
         }
         try {

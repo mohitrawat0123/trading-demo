@@ -1,4 +1,4 @@
-package com.demo.trading;
+package com.demo.trading.filter;
 
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
