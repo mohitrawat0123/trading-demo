@@ -2,9 +2,12 @@ package com.demo.trading.supports.impl;
 
 import com.demo.trading.constants.OrderStatus;
 import com.demo.trading.constants.OrderType;
+import com.demo.trading.dto.response.TradeDTO;
 import com.demo.trading.event.OrderEvent;
+import com.demo.trading.event.TradeEvent;
 import com.demo.trading.store.Order;
 import com.demo.trading.store.OrderBook;
+import com.demo.trading.store.Trade;
 import com.demo.trading.supports.StockExchange;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
@@ -12,22 +15,26 @@ import lombok.extern.log4j.Log4j2;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 
-import java.util.Comparator;
-import java.util.Date;
-import java.util.Map;
-import java.util.Objects;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
 /**
+ * This class acts as a stock exchange which processes the order and executes the trade (buy <> sell).
+ * What it does:
+ * - It maintains the order book & trade book for each stock symbol.
+ * - It matches the buy and sell orders and executes the trade.
+ * - It also notifies the broker once any order gets executed.
  * @author mohitrawat0123
  */
 @Log4j2
 @Service
 @RequiredArgsConstructor
 public class StockExchangeImpl implements StockExchange {
+
+    Map<String, LinkedList<Trade>> tradeMap = new HashMap<>();
 
     public static final Comparator<Order> buyOrderComparator = (o1, o2) -> {
         if (Objects.equals(o1.getPrice(), o2.getPrice())) {
@@ -41,6 +48,7 @@ public class StockExchangeImpl implements StockExchange {
         }
         return o1.getPrice().compareTo(o2.getPrice());
     };
+
     private final ApplicationEventPublisher eventPublisher;
     private final Map<String, OrderBook> stockBook = new ConcurrentHashMap<>();
     private final Map<String, Lock> stockLocks = new ConcurrentHashMap<>();
@@ -61,7 +69,7 @@ public class StockExchangeImpl implements StockExchange {
                 orderBook.getSellOrders().add(order);
             }
             printOrderBook(stockSymbol);
-            stockBook.put(stockSymbol, orderBook);
+            stockBook.put(stockSymbol, orderBook); // not to do if already exits
             eventPublisher.publishEvent(new OrderEvent(this, stockSymbol));
         } finally {
             stockLock.unlock();
@@ -132,6 +140,7 @@ public class StockExchangeImpl implements StockExchange {
                     var bestSellOrder = orderBook.getSellOrders().peek();
                     if (bestBuyOrder.getPrice() >= bestSellOrder.getPrice()) {
                         executeOrder(bestBuyOrder, bestSellOrder, orderBook);
+                        eventPublisher.publishEvent(new TradeEvent(this, bestBuyOrder.getId(), bestSellOrder.getId()));
                     } else {
                         log.info("No trade can be performed. Either no buy order or no sell order.");
                         break;
@@ -150,9 +159,10 @@ public class StockExchangeImpl implements StockExchange {
 
     @SneakyThrows
     private void executeOrder(Order buyOrder, Order sellOrder, OrderBook orderBook) {
+        var stockSymbol = buyOrder.getStockSymbol();
         var tradeQuantity = Math.min(buyOrder.getQuantity(), sellOrder.getQuantity());
-        var remainingBuyQuantity = buyOrder.getQuantity() - tradeQuantity;
-        var remainingSellQuantity = sellOrder.getQuantity() - tradeQuantity;
+        var remainingBuyQuantity = buyOrder.getQuantity() - tradeQuantity; //0
+        var remainingSellQuantity = sellOrder.getQuantity() - tradeQuantity; // 10
 
         log.info("Executing trade for stock: {} at price: {} quantity: {} ...",
                 buyOrder.getStockSymbol(), buyOrder.getPrice(), tradeQuantity);
@@ -182,6 +192,32 @@ public class StockExchangeImpl implements StockExchange {
         log.info("Executed trade for stock: {} at price: {} quantity: {}",
                 buyOrder.getStockSymbol(), buyOrder.getPrice(), tradeQuantity);
 
+        var trade = Trade.builder()
+                .id(UUID.randomUUID().toString())
+                .buyerOrderId(buyOrder.getId())
+                .sellerOrderId(sellOrder.getId())
+                .stockId(buyOrder.getStockSymbol())
+                .quantity(tradeQuantity)
+                .price(buyOrder.getPrice())
+                .tradeTimeStamp(now)
+                .build();
+
+        var stockTrades = tradeMap.getOrDefault(stockSymbol, new LinkedList<>());
+        stockTrades.add(trade);
+        tradeMap.put(stockSymbol, stockTrades); //redundant
+    }
+
+    @Override
+    public List<TradeDTO> getTrades(String stockSymbol) {
+        return tradeMap.getOrDefault(stockSymbol, new LinkedList<>()).stream()
+                .map(trade -> TradeDTO.builder()
+                        .buyOrderId(trade.getBuyerOrderId())
+                        .sellOrderId(trade.getSellerOrderId())
+                        .quantity(trade.getQuantity())
+                        .price(trade.getPrice())
+                        .executedTimeStamp(trade.getTradeTimeStamp())
+                        .build()
+                ).toList();
     }
 
 }

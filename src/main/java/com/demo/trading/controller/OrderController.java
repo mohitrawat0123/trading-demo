@@ -22,7 +22,6 @@ import org.springframework.web.bind.annotation.*;
 public class OrderController {
 
     private final OrderService orderService;
-
     @PostMapping
     @Operation(summary = "Place Order", description = "API to place an order")
     public ResponseEntity<?> placeOrder(@Valid @RequestBody OrderRequestDTO orderRequestDTO) {

@@ -24,4 +24,6 @@ public interface OrderService {
     List<OrderDTO> getStockOrders(String symbol);
 
     List<Order> getExpiringOrders(OrderExpiry orderExpiry);
+
+    void notifyExecution(String orderId);
 }

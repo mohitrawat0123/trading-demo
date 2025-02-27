@@ -23,6 +23,10 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
+ * This class acts as a broker layer which interacts with user and stock exchange for order operations.
+ * What it does:
+ * - It keeps order book for users and submits the order to stock exchange for further processing.
+ * - It also notifies user once their order gets executed.
  * @author mohitrawat0123
  */
 @Log4j2
@@ -136,6 +140,13 @@ public class OrderServiceImpl implements OrderService {
                         !OrderStatus.CANCELLED.equals(order.getOrderStatus())))
                 .filter(order -> order.getOrderExpiry().equals(orderExpiry) && isExpired(order, orderExpiry))
                 .toList();
+    }
+
+    @Override
+    public void notifyExecution(String orderId) {
+        var order = orderMap.get(orderId);
+        var userId = order.getUserId();
+        log.info("Update user:{} for order: {}", userId, orderId);
     }
 
     private boolean isExpired(Order order, OrderExpiry orderExpiry) {
